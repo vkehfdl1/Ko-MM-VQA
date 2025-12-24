@@ -1,9 +1,10 @@
 """Data Browser page - View and manage existing queries."""
 
 import streamlit as st
-from autorag_research.app.components.image_viewer import load_thumbnail
-from autorag_research.app.config import render_settings_sidebar
-from autorag_research.app.db import check_db_connection, get_service
+
+from komm_vqa.app.components.image_viewer import load_thumbnail
+from komm_vqa.app.config import render_settings_sidebar
+from komm_vqa.app.db import check_db_connection, get_service
 
 st.set_page_config(page_title="Data Browser", page_icon="📊", layout="wide")
 st.title("📊 Data Browser")

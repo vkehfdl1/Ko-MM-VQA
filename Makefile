@@ -40,4 +40,16 @@ docker-up:
 	@mkdir -p postgresql/pgdata
 	@cd postgresql && docker compose up -d
 
+# PostgreSQL 컨테이너 중지 및 삭제
+docker-down:
+	@echo "🛑 Stopping PostgreSQL containers..."
+	@cd postgresql && docker compose down
+
+# 완전 정리 (볼륨 포함)
+clean-docker:
+	@echo "🧹 Cleaning up PostgreSQL containers and volumes..."
+	@cd postgresql && docker compose down -v
+	@echo "🗑️  Removing pgdata directory..."
+	@rm -rf postgresql/pgdata
+
 .DEFAULT_GOAL := help

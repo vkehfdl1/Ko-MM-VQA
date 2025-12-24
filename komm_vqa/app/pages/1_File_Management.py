@@ -4,11 +4,12 @@ import uuid
 from io import BytesIO
 
 import streamlit as st
-from autorag_research.app.components.image_viewer import load_thumbnail
-from autorag_research.app.config import get_pdf_storage_path, render_settings_sidebar
-from autorag_research.app.db import check_db_connection, get_service
 from pdf2image import convert_from_bytes
 from pdf2image.pdf2image import pdfinfo_from_bytes
+
+from komm_vqa.app.components.image_viewer import load_thumbnail
+from komm_vqa.app.config import get_pdf_storage_path, render_settings_sidebar
+from komm_vqa.app.db import check_db_connection, get_service
 
 st.set_page_config(page_title="File Management", page_icon="📁", layout="wide")
 st.title("📁 File Management")

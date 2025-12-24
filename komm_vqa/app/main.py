@@ -19,8 +19,8 @@ def main():
     st.write("Create Multi-Page Multi-Hop Visual Question Answering datasets")
 
     # Import here to avoid circular imports
-    from autorag_research.app.config import render_settings_sidebar
-    from autorag_research.app.db import check_db_connection, get_service
+    from komm_vqa.app.config import render_settings_sidebar
+    from komm_vqa.app.db import check_db_connection, get_service
 
     # Render settings in sidebar
     render_settings_sidebar()

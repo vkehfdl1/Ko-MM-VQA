@@ -3,8 +3,9 @@
 from io import BytesIO
 
 import streamlit as st
-from autorag_research.app.db import get_service
 from PIL import Image
+
+from komm_vqa.app.db import get_service
 
 
 @st.cache_data(ttl=3600, max_entries=500)

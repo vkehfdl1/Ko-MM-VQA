@@ -212,3 +212,5 @@ __marimo__/
 
 # Streamlit secrets (contains DB credentials)
 .streamlit/secrets.toml
+postgresql/pgdata
+data/

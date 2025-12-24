@@ -1,15 +1,16 @@
 """QA Creation page - Create queries with retrieval ground truth."""
 
 import streamlit as st
-from autorag_research.app.components.page_selector import (
+from autorag_research.orm.models.retrieval_gt import and_all, image, or_all
+
+from komm_vqa.app.components.page_selector import (
     clear_page_selection,
     page_multi_selector,
     render_selected_pages_preview,
 )
-from autorag_research.app.components.query_form import query_input_form, render_query_preview
-from autorag_research.app.config import render_settings_sidebar
-from autorag_research.app.db import check_db_connection, get_service
-from autorag_research.orm.models.retrieval_gt import and_all, image, or_all
+from komm_vqa.app.components.query_form import query_input_form, render_query_preview
+from komm_vqa.app.config import render_settings_sidebar
+from komm_vqa.app.db import check_db_connection, get_service
 
 st.set_page_config(page_title="QA Creation", page_icon="❓", layout="wide")
 st.title("❓ QA Creation")

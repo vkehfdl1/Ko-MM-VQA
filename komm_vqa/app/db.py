@@ -3,11 +3,12 @@
 from collections.abc import Callable
 
 import streamlit as st
-from autorag_research.app.config import get_db_config
 from autorag_research.orm.schema_factory import create_schema
 from autorag_research.orm.service.multi_modal_ingestion import MultiModalIngestionService
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
+
+from komm_vqa.app.config import get_db_config
 
 
 def get_db_url() -> str:
