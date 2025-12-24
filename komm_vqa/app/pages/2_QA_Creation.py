@@ -5,7 +5,7 @@ from autorag_research.orm.models.retrieval_gt import and_all, image, or_all
 
 from komm_vqa.app.components.page_selector import (
     clear_page_selection,
-    page_multi_selector,
+    page_number_selector,
     render_selected_pages_preview,
 )
 from komm_vqa.app.components.query_form import query_input_form, render_query_preview
@@ -85,10 +85,7 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("1. Select Pages")
-    selected_page_ids, selected_image_chunk_ids = page_multi_selector(key_prefix="qa_creation")
-
-    if selected_page_ids:
-        st.success(f"{len(selected_page_ids)} page(s) selected")
+    selected_page_ids, selected_image_chunk_ids = page_number_selector(key_prefix="qa_creation")
 
 with col2:
     st.subheader("2. Enter Query")
@@ -150,31 +147,42 @@ service = get_service()
 with service._create_uow() as uow:
     # Get recent queries (latest 5)
     queries = uow.queries.get_all(limit=5)
+    # Extract data while session is active to avoid DetachedInstanceError
+    query_list = []
+    for q in queries:
+        relations = uow.retrieval_relations.get_by_query_id(q.id)
+        group_indices = {r.group_index for r in relations}
+        if len(group_indices) > 1:
+            relation_type = "AND (multi-hop)"
+        elif len(relations) > 1:
+            relation_type = "OR"
+        elif len(relations) == 1:
+            relation_type = "Single"
+        else:
+            relation_type = None
 
-if queries:
-    for query in queries:
-        with st.expander(f"Q: {query.contents[:50]}..." if len(query.contents) > 50 else f"Q: {query.contents}"):
-            st.write(f"**ID:** {query.id}")
-            st.write(f"**Query:** {query.contents}")
-            if query.query_to_llm:
-                st.write(f"**Query to LLM:** {query.query_to_llm}")
-            if query.generation_gt:
-                st.write(f"**Generation GT:** {', '.join(query.generation_gt[:3])}")
+        query_list.append({
+            "id": q.id,
+            "contents": q.contents,
+            "query_to_llm": q.query_to_llm,
+            "generation_gt": q.generation_gt,
+            "relation_count": len(relations),
+            "relation_type": relation_type,
+        })
 
-            # Get retrieval relations
-            relations = uow.retrieval_relations.get_by_query_id(query.id)
-            if relations:
-                st.write(f"**Retrieval GT:** {len(relations)} image chunk(s)")
+if query_list:
+    for query_info in query_list:
+        contents = query_info["contents"]
+        with st.expander(f"Q: {contents[:50]}..." if len(contents) > 50 else f"Q: {contents}"):
+            st.write(f"**ID:** {query_info['id']}")
+            st.write(f"**Query:** {query_info['contents']}")
+            if query_info["query_to_llm"]:
+                st.write(f"**Query to LLM:** {query_info['query_to_llm']}")
+            if query_info["generation_gt"]:
+                st.write(f"**Generation GT:** {', '.join(query_info['generation_gt'][:3])}")
 
-                # Determine relation type
-                group_indices = {r.group_index for r in relations}
-                if len(group_indices) > 1:
-                    st.write("**Type:** AND (multi-hop)")
-                else:
-                    group_orders = [r.group_order for r in relations if r.group_index == 0]
-                    if len(group_orders) > 1:
-                        st.write("**Type:** OR")
-                    else:
-                        st.write("**Type:** Single")
+            if query_info["relation_count"] > 0:
+                st.write(f"**Retrieval GT:** {query_info['relation_count']} image chunk(s)")
+                st.write(f"**Type:** {query_info['relation_type']}")
 else:
     st.info("No queries created yet.")

@@ -4,6 +4,9 @@ Run with: streamlit run autorag_research/app/main.py
 """
 
 import streamlit as st
+from autorag_research.orm.schema_factory import create_schema
+
+from komm_vqa.app.db import get_engine
 
 st.set_page_config(
     page_title="VQA Dataset Creator",
@@ -30,6 +33,9 @@ def main():
 
     if is_connected:
         st.sidebar.success("DB Connected")
+
+        schema = create_schema(768, primary_key_type="string")
+        schema.Base.metadata.create_all(get_engine())
 
         # Display statistics
         try:

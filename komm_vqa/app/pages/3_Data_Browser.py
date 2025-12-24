@@ -27,7 +27,12 @@ def delete_query(query_id: str) -> None:
     """
     service = get_service()
     with service._create_uow() as uow:
-        # Retrieval relations will cascade delete due to FK constraints
+        # Delete RetrievalRelations first (FK constraint)
+        relations = uow.retrieval_relations.get_by_query_id(query_id)
+        for rel in relations:
+            uow.retrieval_relations.delete(rel)
+
+        # Delete Query
         uow.queries.delete_by_id(query_id)
         uow.commit()
 
@@ -45,6 +50,7 @@ def get_image_chunk_thumbnail(image_chunk_id: str) -> bytes | None:
     with service._create_uow() as uow:
         image_chunk = uow.image_chunks.get_by_id(image_chunk_id)
         if image_chunk and image_chunk.parent_page:
+            # parent_page is FK ID (not object), use directly
             return load_thumbnail(image_chunk.parent_page)
     return None
 
@@ -63,9 +69,36 @@ with tab1:
         st.session_state.browser_page = 0
 
     with service._create_uow() as uow:
-        # Get total count
+        # Get all queries and extract data while session is active
         all_queries = uow.queries.get_all()
         total_queries = len(all_queries)
+
+        # Extract query data for current page
+        start_idx = st.session_state.browser_page * page_size
+        end_idx = min(start_idx + page_size, total_queries)
+        page_queries = all_queries[start_idx:end_idx]
+
+        query_list = []
+        for q in page_queries:
+            relations = uow.retrieval_relations.get_by_query_id(q.id)
+            # Group relations by group_index
+            groups: dict[int, list] = {}
+            for rel in relations:
+                if rel.group_index not in groups:
+                    groups[rel.group_index] = []
+                groups[rel.group_index].append({
+                    "group_index": rel.group_index,
+                    "group_order": rel.group_order,
+                    "image_chunk_id": rel.image_chunk_id,
+                })
+
+            query_list.append({
+                "id": q.id,
+                "contents": q.contents,
+                "query_to_llm": q.query_to_llm,
+                "generation_gt": q.generation_gt,
+                "relation_groups": groups,
+            })
 
     if total_queries == 0:
         st.info("No queries found. Create queries in the QA Creation page.")
@@ -87,53 +120,40 @@ with tab1:
                 st.session_state.browser_page += 1
                 st.rerun()
 
-        # Get queries for current page
-        start_idx = st.session_state.browser_page * page_size
-        end_idx = min(start_idx + page_size, total_queries)
-        queries = all_queries[start_idx:end_idx]
-
         # Display queries
-        for query in queries:
+        for query_info in query_list:
+            contents = query_info["contents"]
             with st.expander(
-                f"Q: {query.contents[:60]}..." if len(query.contents) > 60 else f"Q: {query.contents}",
+                f"Q: {contents[:60]}..." if len(contents) > 60 else f"Q: {contents}",
                 expanded=False,
             ):
                 col1, col2 = st.columns([3, 1])
 
                 with col1:
-                    st.write(f"**ID:** `{query.id}`")
-                    st.write(f"**Query:** {query.contents}")
+                    st.write(f"**ID:** `{query_info['id']}`")
+                    st.write(f"**Query:** {query_info['contents']}")
 
-                    if query.query_to_llm:
-                        st.write(f"**Query to LLM:** {query.query_to_llm}")
+                    if query_info["query_to_llm"]:
+                        st.write(f"**Query to LLM:** {query_info['query_to_llm']}")
 
-                    if query.generation_gt:
+                    if query_info["generation_gt"]:
                         st.write("**Generation GT:**")
-                        for gt in query.generation_gt:
+                        for gt in query_info["generation_gt"]:
                             st.write(f"  - {gt}")
 
                 with col2:
-                    if st.button("🗑️ Delete", key=f"delete_query_{query.id}", type="secondary"):
-                        delete_query(query.id)
+                    if st.button("🗑️ Delete", key=f"delete_query_{query_info['id']}", type="secondary"):
+                        delete_query(query_info["id"])
                         st.success("Query deleted!")
                         st.cache_data.clear()
                         st.rerun()
 
-                # Get and display retrieval relations
+                # Display retrieval relations
                 st.divider()
                 st.write("**Retrieval Ground Truth:**")
 
-                with service._create_uow() as uow:
-                    relations = uow.retrieval_relations.get_by_query_id(query.id)
-
-                if relations:
-                    # Group by group_index
-                    groups: dict[int, list] = {}
-                    for rel in relations:
-                        if rel.group_index not in groups:
-                            groups[rel.group_index] = []
-                        groups[rel.group_index].append(rel)
-
+                groups = query_info["relation_groups"]
+                if groups:
                     # Display groups
                     for group_idx in sorted(groups.keys()):
                         group_relations = groups[group_idx]
@@ -146,12 +166,12 @@ with tab1:
 
                         for i, rel in enumerate(group_relations):
                             with cols[i % 6]:
-                                if rel.image_chunk_id:
+                                if rel["image_chunk_id"]:
                                     # Get thumbnail via parent page
-                                    thumb = get_image_chunk_thumbnail(rel.image_chunk_id)
+                                    thumb = get_image_chunk_thumbnail(rel["image_chunk_id"])
                                     if thumb:
                                         st.image(thumb, width=100)
-                                    st.caption(f"IC: {rel.image_chunk_id[:8]}...")
+                                    st.caption(f"IC: {rel['image_chunk_id'][:8]}...")
 
                         if len(groups) == 1 and len(group_relations) > 1:
                             st.caption("(OR: any of these is correct)")

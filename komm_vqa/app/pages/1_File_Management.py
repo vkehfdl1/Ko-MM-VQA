@@ -1,15 +1,47 @@
 """File Management page - Upload PDFs and browse documents."""
 
+import base64
 import uuid
 from io import BytesIO
+from pathlib import Path
 
 import streamlit as st
 from pdf2image import convert_from_bytes
 from pdf2image.pdf2image import pdfinfo_from_bytes
 
-from komm_vqa.app.components.image_viewer import load_thumbnail
+from komm_vqa.app.components.image_viewer import load_full_image
 from komm_vqa.app.config import get_pdf_storage_path, render_settings_sidebar
 from komm_vqa.app.db import check_db_connection, get_service
+
+
+def render_pdf_viewer(pdf_path: str, height: int = 800) -> None:
+    """Render PDF viewer using iframe with base64 encoded PDF.
+
+    Args:
+        pdf_path: Path to PDF file
+        height: Height of the viewer in pixels
+    """
+    pdf_file = Path(pdf_path)
+    if not pdf_file.exists():
+        st.error(f"PDF file not found: {pdf_path}")
+        return
+
+    with open(pdf_file, "rb") as f:
+        pdf_bytes = f.read()
+
+    base64_pdf = base64.b64encode(pdf_bytes).decode("utf-8")
+    pdf_display = f'''
+        <iframe
+            src="data:application/pdf;base64,{base64_pdf}"
+            width="100%"
+            height="{height}px"
+            type="application/pdf"
+            style="border: 1px solid #ddd; border-radius: 4px;"
+        >
+        </iframe>
+    '''
+    st.markdown(pdf_display, unsafe_allow_html=True)
+
 
 st.set_page_config(page_title="File Management", page_icon="📁", layout="wide")
 st.title("📁 File Management")
@@ -83,22 +115,22 @@ def upload_pdf(uploaded_file) -> tuple[str, int]:
     with open(save_path, "wb") as f:
         f.write(uploaded_file.getbuffer())
 
+    # Add File
+    file_ids = service.add_files([{"path": str(save_path), "type": "raw"}])
+    file_id = file_ids[0]
+
     # Convert PDF pages to images
     pdf_bytes = uploaded_file.getvalue()
     images = convert_pdf_with_progress(pdf_bytes)
 
     st.info(f"Processing {len(images)} pages...")
 
-    # Add File
-    file_ids = service.add_files([{"path": str(save_path), "file_type": "raw"}])
-    file_id = file_ids[0]
-
     # Add Document (1:1 with File)
     doc_ids = service.add_documents([
         {
             "path": file_id,
             "filename": filename,
-            "title": filename.replace(".pdf", ""),
+            "title": filename.split(".")[0].strip(),
         }
     ])
     doc_id = doc_ids[0]
@@ -115,7 +147,7 @@ def upload_pdf(uploaded_file) -> tuple[str, int]:
             {
                 "document_id": doc_id,
                 "page_num": page_num,
-                "image_content": img_bytes,
+                "image_contents": img_bytes,
                 "mimetype": "image/png",
             }
         ])
@@ -124,9 +156,9 @@ def upload_pdf(uploaded_file) -> tuple[str, int]:
         # Add ImageChunk (1:1 with Page)
         service.add_image_chunks([
             {
-                "content": img_bytes,
+                "contents": img_bytes,
                 "mimetype": "image/png",
-                "parent_page_id": page_id,
+                "parent_page": page_id,
             }
         ])
 
@@ -144,14 +176,36 @@ def delete_document(document_id: str) -> None:
         # Get document to find file path
         doc = uow.documents.get_by_id(document_id)
         if doc:
-            # Delete from DB (cascade will handle pages, image_chunks)
-            uow.documents.delete_by_id(document_id)
-            uow.commit()
+            file_id = doc.path  # File ID referenced by Document
 
-            # Optionally delete physical file
-            # (commented out for safety - user can manually delete)
-            # if doc.file and doc.file.path:
-            #     Path(doc.file.path).unlink(missing_ok=True)
+            # Get all pages for this document
+            pages = uow.pages.get_by_document_id(document_id)
+
+            # Delete ImageChunks and Captions for each page first (FK constraint)
+            for page in pages:
+                # Delete ImageChunks
+                image_chunks = uow.image_chunks.get_by_page_id(page.id)
+                for ic in image_chunks:
+                    uow.image_chunks.delete_by_id(ic.id)
+
+                # Delete Captions (if any)
+                if hasattr(uow, "captions"):
+                    captions = uow.captions.get_by_page_id(page.id)
+                    for caption in captions:
+                        uow.captions.delete_by_id(caption.id)
+
+            # Delete Pages (FK constraint)
+            for page in pages:
+                uow.pages.delete_by_id(page.id)
+
+            # Delete Document
+            uow.documents.delete_by_id(document_id)
+
+            # Delete File (orphan after Document deletion)
+            if file_id:
+                uow.files.delete_by_id(file_id)
+
+            uow.commit()
 
 
 # Main content
@@ -185,47 +239,94 @@ with tab2:
 
     service = get_service()
 
-    # Get all documents
+    # Get all documents with related data
     with service._create_uow() as uow:
         documents = uow.documents.get_all()
+        # Extract data while session is active to avoid DetachedInstanceError
+        doc_list = []
+        for doc in documents:
+            pages = uow.pages.get_by_document_id(doc.id)
+            doc_list.append({
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.filename,
+                "file_path": doc.file.path if doc.file else None,
+                "page_count": len(pages),
+            })
 
-    if not documents:
+    if not doc_list:
         st.info("No documents found. Upload a PDF to get started.")
     else:
-        st.write(f"**Total Documents:** {len(documents)}")
+        # Document selector
+        doc_options = {f"{d['title'] or d['filename'] or 'Untitled'} ({d['page_count']} pages)": d for d in doc_list}
 
-        for doc in documents:
-            with st.expander(f"📄 {doc.title or doc.filename or 'Untitled'} (ID: {doc.id[:8]}...)"):
-                col1, col2 = st.columns([3, 1])
+        selected_doc_name = st.selectbox(
+            "Select Document",
+            options=list(doc_options.keys()),
+            key="browse_doc_select",
+        )
 
-                with col1:
-                    st.write(f"**Filename:** {doc.filename}")
-                    st.write(f"**Title:** {doc.title}")
-                    if doc.file:
-                        st.write(f"**Path:** {doc.file.path}")
+        if selected_doc_name:
+            doc_info = doc_options[selected_doc_name]
 
-                with col2:
-                    if st.button("🗑️ Delete", key=f"delete_{doc.id}", type="secondary"):
-                        delete_document(doc.id)
-                        st.success("Document deleted!")
-                        st.cache_data.clear()
-                        st.rerun()
+            # Document info and delete button
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                st.write(f"**Document ID:** `{doc_info['id'][:8]}...`")
+                st.write(f"**Pages:** {doc_info['page_count']}")
+            with col2:
+                if st.button("🗑️ Delete Document", type="secondary"):
+                    delete_document(doc_info["id"])
+                    st.success("Document deleted!")
+                    st.cache_data.clear()
+                    st.rerun()
 
-                # Show pages
-                st.write("**Pages:**")
-                with service._create_uow() as uow:
-                    pages = uow.pages.get_by_document_id(doc.id)
+            st.divider()
 
-                if pages:
-                    # Show thumbnails in a grid
-                    cols = st.columns(min(len(pages), 6))
-                    for i, page in enumerate(pages[:12]):  # Limit to first 12
-                        with cols[i % 6]:
-                            thumb = load_thumbnail(page.id, (150, 150))
-                            if thumb:
-                                st.image(thumb, caption=f"P{page.page_num}")
+            # View mode selector
+            view_mode = st.radio(
+                "View Mode",
+                options=["PDF Viewer", "Page by Number"],
+                horizontal=True,
+                key="browse_view_mode",
+            )
 
-                    if len(pages) > 12:
-                        st.caption(f"... and {len(pages) - 12} more pages")
+            if view_mode == "PDF Viewer":
+                # PDF Viewer
+                if doc_info["file_path"]:
+                    st.write("**PDF Preview:**")
+                    render_pdf_viewer(doc_info["file_path"], height=700)
                 else:
-                    st.info("No pages")
+                    st.warning("PDF file path not available")
+
+            else:  # Page by Number
+                st.write("**View Page by Number:**")
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    page_num = st.number_input(
+                        "Page number",
+                        min_value=1,
+                        max_value=doc_info["page_count"],
+                        value=1,
+                        step=1,
+                        key="browse_page_num",
+                    )
+
+                # Get and display the page
+                with service._create_uow() as uow:
+                    pages = uow.pages.get_by_document_id(doc_info["id"])
+                    page_info = None
+                    for p in pages:
+                        if p.page_num == page_num:
+                            page_info = {"id": p.id, "page_num": p.page_num}
+                            break
+
+                if page_info:
+                    st.write(f"**Page {page_num}:**")
+                    img_bytes = load_full_image(page_info["id"])
+                    if img_bytes:
+                        st.image(img_bytes, use_container_width=True)
+                    else:
+                        st.warning("Could not load image")
+                else:
+                    st.error(f"Page {page_num} not found")

@@ -9,11 +9,11 @@ from komm_vqa.app.db import get_service
 
 
 @st.cache_data(ttl=3600, max_entries=500)
-def load_thumbnail(_page_id: str, size: tuple[int, int] = (200, 200)) -> bytes | None:
+def load_thumbnail(page_id: str, size: tuple[int, int] = (200, 200)) -> bytes | None:
     """Load and cache page thumbnail.
 
     Args:
-        _page_id: Page ID (underscore prefix tells Streamlit not to hash this)
+        page_id: Page ID (used as cache key)
         size: Maximum thumbnail size (width, height)
 
     Returns:
@@ -21,7 +21,7 @@ def load_thumbnail(_page_id: str, size: tuple[int, int] = (200, 200)) -> bytes |
     """
     service = get_service()
     with service._create_uow() as uow:
-        page = uow.pages.get_by_id(_page_id)
+        page = uow.pages.get_by_id(page_id)
         if page and page.image_contents:
             try:
                 img = Image.open(BytesIO(page.image_contents))
@@ -35,18 +35,18 @@ def load_thumbnail(_page_id: str, size: tuple[int, int] = (200, 200)) -> bytes |
 
 
 @st.cache_data(ttl=300, max_entries=50)
-def load_full_image(_page_id: str) -> bytes | None:
+def load_full_image(page_id: str) -> bytes | None:
     """Load and cache full page image.
 
     Args:
-        _page_id: Page ID
+        page_id: Page ID (used as cache key)
 
     Returns:
         Image bytes or None if not found
     """
     service = get_service()
     with service._create_uow() as uow:
-        page = uow.pages.get_by_id(_page_id)
+        page = uow.pages.get_by_id(page_id)
         if page and page.image_contents:
             return page.image_contents
     return None
@@ -140,5 +140,23 @@ def render_image_modal(page_id: str, page_num: int) -> None:
     img_bytes = load_full_image(page_id)
     if img_bytes:
         st.image(img_bytes, caption=f"Page {page_num} (Full Size)")
+    else:
+        st.error("Could not load image")
+
+
+@st.dialog("Full Size Image", width="large")
+def show_full_image_dialog(page_id: str, page_num: int) -> None:
+    """Show full-size image in a dialog.
+
+    Args:
+        page_id: Page ID
+        page_num: Page number for title
+    """
+    img_bytes = load_full_image(page_id)
+    if img_bytes:
+        # Show image info
+        img = Image.open(BytesIO(img_bytes))
+        st.caption(f"Page {page_num} | Size: {img.width} x {img.height} px")
+        st.image(img_bytes, use_container_width=True)
     else:
         st.error("Could not load image")
