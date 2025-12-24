@@ -84,6 +84,15 @@ uv run streamlit run komm_vqa/app/main.py
 
 => 제작에 사용하시는 PDF를 여기에 올려주시면 됩니다. data/pdfs 폴더에 저장되고, 추후에 해당 폴더를 압축해서 공유해주시면 됩니다.
 
+**Upload Images 탭:**
+1. 여러 이미지 파일 선택 (PNG, JPG, JPEG, WEBP, BMP, TIFF 지원)
+2. 이미지들이 파일 이름 순으로 자동 정렬됨
+3. Document title 입력 (선택사항)
+4. "Create PDF and Process" 클릭
+5. 이미지들이 하나의 PDF로 결합되어 저장됨
+
+=> PDF가 없고 이미지들만 있는 경우 이 탭을 사용하세요.
+
 **Browse Documents 탭:**
 - 문서 선택 후 PDF Viewer 또는 Page by Number로 확인
 - Delete Document로 문서 삭제

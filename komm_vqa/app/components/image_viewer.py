@@ -62,7 +62,7 @@ def render_page_thumbnail(page_id: str, page_num: int, size: tuple[int, int] = (
     """
     thumb = load_thumbnail(page_id, size)
     if thumb:
-        st.image(thumb, caption=f"Page {page_num}", use_container_width=True)
+        st.image(thumb, caption=f"Page {page_num}", width="stretch")
     else:
         st.warning(f"Page {page_num}: No image")
 
@@ -94,7 +94,7 @@ def render_page_gallery(
         with cols[i % columns]:
             thumb = load_thumbnail(page.id)
             if thumb:
-                st.image(thumb, use_container_width=True)
+                st.image(thumb, width="stretch")
             else:
                 st.info(f"Page {page.page_num}")
 
@@ -157,6 +157,6 @@ def show_full_image_dialog(page_id: str, page_num: int) -> None:
         # Show image info
         img = Image.open(BytesIO(img_bytes))
         st.caption(f"Page {page_num} | Size: {img.width} x {img.height} px")
-        st.image(img_bytes, use_container_width=True)
+        st.image(img_bytes, width="stretch")
     else:
         st.error("Could not load image")

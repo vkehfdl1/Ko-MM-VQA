@@ -115,7 +115,7 @@ def page_number_selector(
     if page_info:
         img_bytes = load_full_image(page_info["id"])
         if img_bytes:
-            st.image(img_bytes, use_container_width=True)
+            st.image(img_bytes, width="stretch")
         else:
             st.warning("Could not load image")
 
@@ -200,6 +200,6 @@ def render_selected_pages_preview(
         with st.expander(f"{doc_title} - Page {page_num}", expanded=False):
             img_bytes = load_full_image(page_id)
             if img_bytes:
-                st.image(img_bytes, use_container_width=True)
+                st.image(img_bytes, width="stretch")
             else:
                 st.warning("Could not load image")
