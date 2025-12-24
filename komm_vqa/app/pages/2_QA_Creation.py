@@ -8,7 +8,7 @@ from komm_vqa.app.components.page_selector import (
     page_number_selector,
     render_selected_pages_preview,
 )
-from komm_vqa.app.components.query_form import query_input_form, render_query_preview
+from komm_vqa.app.components.query_form import clear_query_form, query_input_form, render_query_preview
 from komm_vqa.app.config import render_settings_sidebar
 from komm_vqa.app.db import check_db_connection, get_service
 
@@ -99,45 +99,59 @@ with col2:
 
         st.divider()
 
-        # Query form
+        # Query form - returns form_data when Submit is clicked
         form_data = query_input_form(key_prefix="qa_creation", show_relation_type=True)
 
+        # Store form_data in session state when submitted
         if form_data:
-            # Validate
             is_valid, errors = form_data.is_valid()
-
             if not is_valid:
                 for error in errors:
                     st.error(error)
+                st.session_state["qa_creation_pending_form"] = None
             else:
-                # Show preview
-                render_query_preview(form_data, len(selected_page_ids))
+                st.session_state["qa_creation_pending_form"] = form_data
+                st.rerun()
 
-                st.divider()
+        # Check for pending form data to confirm
+        pending_form = st.session_state.get("qa_creation_pending_form")
+        if pending_form:
+            st.divider()
+            st.subheader("Review and Confirm")
 
-                # Confirm and create
-                if st.button("Confirm and Create Query", type="primary"):
+            # Show preview
+            render_query_preview(pending_form, len(selected_page_ids))
+
+            st.divider()
+
+            col_confirm, col_cancel = st.columns(2)
+            with col_confirm:
+                if st.button("✅ Confirm and Create", type="primary"):
                     try:
                         query_id = create_query_with_retrieval_gt(
-                            query_text=form_data.query_text,
-                            query_to_llm=form_data.query_to_llm,
-                            generation_gt=form_data.generation_gt if form_data.generation_gt else None,
+                            query_text=pending_form.query_text,
+                            query_to_llm=pending_form.query_to_llm,
+                            generation_gt=pending_form.generation_gt if pending_form.generation_gt else None,
                             image_chunk_ids=selected_image_chunk_ids,
-                            relation_type=form_data.relation_type,
+                            relation_type=pending_form.relation_type,
                         )
 
                         st.success(f"Query created successfully! ID: {query_id[:8]}...")
 
-                        # Clear selections
+                        # Clear selections and form
                         clear_page_selection("qa_creation")
+                        clear_query_form("qa_creation")
+                        st.session_state["qa_creation_pending_form"] = None
                         st.cache_data.clear()
-
-                        # Ask if user wants to create another
-                        if st.button("Create Another Query"):
-                            st.rerun()
+                        st.rerun()
 
                     except Exception as e:
                         st.error(f"Error creating query: {e}")
+
+            with col_cancel:
+                if st.button("❌ Cancel"):
+                    st.session_state["qa_creation_pending_form"] = None
+                    st.rerun()
 
 # Show recent queries at the bottom
 st.divider()

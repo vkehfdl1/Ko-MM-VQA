@@ -31,6 +31,15 @@ class QueryFormData:
         if self.relation_type not in ("or", "and"):
             errors.append("Invalid relation type")
 
+        # Generation GT is required
+        if not self.generation_gt or len(self.generation_gt) == 0:
+            errors.append("At least one Generation Ground Truth is required")
+
+        # Check for empty generation_gt entries
+        empty_entries = [i for i, gt in enumerate(self.generation_gt) if not gt.strip()]
+        if empty_entries:
+            errors.append(f"Generation GT entries cannot be empty (check entry {empty_entries[0] + 1})")
+
         return len(errors) == 0, errors
 
 
@@ -38,88 +47,137 @@ def query_input_form(
     key_prefix: str = "query_form",
     show_relation_type: bool = True,
 ) -> QueryFormData | None:
-    """Render query input form.
+    """Render query input form with dynamic generation GT list.
 
     Args:
         key_prefix: Unique prefix for widget keys
         show_relation_type: Whether to show relation type selector
 
     Returns:
-        QueryFormData if form is submitted, None otherwise
+        QueryFormData if form is submitted and valid, None otherwise
     """
-    with st.form(key=f"{key_prefix}_form"):
-        st.subheader("Query Information")
+    # Initialize session state for generation_gt list
+    gt_key = f"{key_prefix}_generation_gt_list"
+    if gt_key not in st.session_state:
+        st.session_state[gt_key] = [""]  # Start with one empty entry
 
-        # Query text (required)
-        query_text = st.text_area(
-            "Query *",
-            placeholder="Enter the question that requires the selected pages to answer...",
-            help="The main query text that will be used for retrieval evaluation",
-            key=f"{key_prefix}_query_text",
-        )
+    generation_gt_list: list[str] = st.session_state[gt_key]
 
-        # Query to LLM (optional)
-        query_to_llm = st.text_area(
-            "Query to LLM (optional)",
-            placeholder="Alternative query text to send to LLM (if different from main query)",
-            help="If provided, this will be sent to the LLM instead of the main query",
-            key=f"{key_prefix}_query_to_llm",
-        )
+    st.subheader("Query Information")
 
-        # Generation ground truth (optional, multiple lines)
-        generation_gt_text = st.text_area(
-            "Generation Ground Truth (optional)",
-            placeholder="Enter correct answers, one per line...\nAnswer 1\nAnswer 2",
-            help="Expected answers for generation evaluation. Enter one answer per line.",
-            key=f"{key_prefix}_generation_gt",
-        )
+    # Query text (required)
+    query_text = st.text_area(
+        "Query *",
+        placeholder="Enter the question that requires the selected pages to answer...",
+        help="The main query text that will be used for retrieval evaluation",
+        key=f"{key_prefix}_query_text",
+    )
 
-        # Relation type
-        if show_relation_type:
-            st.divider()
-            st.write("**Relation Type:**")
+    # Query to LLM (optional)
+    query_to_llm = st.text_area(
+        "Query to LLM (optional)",
+        placeholder="Alternative query text to send to LLM (if different from main query)",
+        help="If provided, this will be sent to the LLM instead of the main query",
+        key=f"{key_prefix}_query_to_llm",
+    )
 
-            col1, col2 = st.columns(2)
-            with col1:
-                relation_type = st.radio(
-                    "Select type",
-                    options=["or", "and"],
-                    format_func=lambda x: (
-                        "OR (any page is correct)" if x == "or" else "AND (all pages required - multi-hop)"
-                    ),
-                    key=f"{key_prefix}_relation_type",
-                    horizontal=True,
-                )
+    # Generation ground truth (required, dynamic list)
+    st.divider()
+    st.write("**Generation Ground Truth (required)** *")
+    st.caption("Add expected answers. Each entry can contain multiple lines.")
 
-            with col2:
-                if relation_type == "or":
-                    st.info("**OR**: Any of the selected pages contains the answer.")
-                else:
-                    st.info("**AND**: All selected pages are required together (multi-hop reasoning).")
-        else:
-            relation_type = "or"
+    # Render each generation GT entry
+    updated_list = []
+    items_to_remove = []
 
-        # Submit button
-        submitted = st.form_submit_button("Submit Query", type="primary")
+    for i, gt_value in enumerate(generation_gt_list):
+        col1, col2 = st.columns([6, 1])
+        with col1:
+            new_value = st.text_area(
+                f"Answer {i + 1}",
+                value=gt_value,
+                placeholder=f"Enter answer {i + 1}...",
+                key=f"{key_prefix}_gt_{i}",
+                height=100,
+                label_visibility="collapsed",
+            )
+            updated_list.append(new_value)
+        with col2:
+            st.write("")  # Spacer
+            if len(generation_gt_list) > 1 and st.button(
+                "🗑️", key=f"{key_prefix}_remove_gt_{i}", help="Remove this answer"
+            ):
+                items_to_remove.append(i)
 
-        if submitted:
-            # Parse generation_gt (one per line, filter empty)
-            generation_gt = (
-                [line.strip() for line in generation_gt_text.strip().split("\n") if line.strip()]
-                if generation_gt_text
-                else []
+    # Handle removals
+    if items_to_remove:
+        for idx in sorted(items_to_remove, reverse=True):
+            updated_list.pop(idx)
+        st.session_state[gt_key] = updated_list
+        st.rerun()
+
+    # Add button
+    if st.button("Add Answer", key=f"{key_prefix}_add_gt"):
+        updated_list.append("")
+        st.session_state[gt_key] = updated_list
+        st.rerun()
+
+    # Update session state with current values
+    st.session_state[gt_key] = updated_list
+
+    # Relation type
+    if show_relation_type:
+        st.divider()
+        st.write("**Relation Type:**")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            relation_type = st.radio(
+                "Select type",
+                options=["and", "or"],
+                format_func=lambda x: (
+                    "AND (all pages required - multi-hop)" if x == "and" else "OR (any page is correct)"
+                ),
+                key=f"{key_prefix}_relation_type",
+                horizontal=True,
             )
 
-            form_data = QueryFormData(
-                query_text=query_text.strip(),
-                query_to_llm=query_to_llm.strip() if query_to_llm and query_to_llm.strip() else None,
-                generation_gt=generation_gt,
-                relation_type=relation_type,
-            )
+        with col2:
+            if relation_type == "or":
+                st.info("**OR**: Any of the selected pages contains the answer.")
+            else:
+                st.info("**AND**: All selected pages are required together (multi-hop reasoning).")
+    else:
+        relation_type = "and"
 
-            return form_data
+    st.divider()
+
+    # Submit button
+    if st.button("Submit Query", type="primary", key=f"{key_prefix}_submit"):
+        # Filter out empty entries for final submission
+        generation_gt = [gt for gt in updated_list if gt.strip()]
+
+        form_data = QueryFormData(
+            query_text=query_text.strip() if query_text else "",
+            query_to_llm=query_to_llm.strip() if query_to_llm and query_to_llm.strip() else None,
+            generation_gt=generation_gt,
+            relation_type=relation_type,
+        )
+
+        return form_data
 
     return None
+
+
+def clear_query_form(key_prefix: str = "query_form") -> None:
+    """Clear query form state.
+
+    Args:
+        key_prefix: The key prefix used in query_input_form
+    """
+    gt_key = f"{key_prefix}_generation_gt_list"
+    if gt_key in st.session_state:
+        st.session_state[gt_key] = [""]
 
 
 def render_query_preview(form_data: QueryFormData, page_count: int) -> None:
@@ -138,7 +196,7 @@ def render_query_preview(form_data: QueryFormData, page_count: int) -> None:
         st.write(form_data.query_text[:200] + "..." if len(form_data.query_text) > 200 else form_data.query_text)
 
         if form_data.query_to_llm:
-            st.write("**Query to LLM:**")
+            st.write("**객관식 쿼리:**")
             st.write(
                 form_data.query_to_llm[:100] + "..." if len(form_data.query_to_llm) > 100 else form_data.query_to_llm
             )
@@ -146,8 +204,13 @@ def render_query_preview(form_data: QueryFormData, page_count: int) -> None:
     with col2:
         st.write("**Generation GT:**")
         if form_data.generation_gt:
-            for gt in form_data.generation_gt[:3]:
-                st.write(f"- {gt[:50]}..." if len(gt) > 50 else f"- {gt}")
+            for i, gt in enumerate(form_data.generation_gt[:3]):
+                # Show first line of each GT
+                first_line = gt.split("\n")[0]
+                display = first_line[:50] + "..." if len(first_line) > 50 else first_line
+                if "\n" in gt:
+                    display += " (multiline)"
+                st.write(f"{i + 1}. {display}")
             if len(form_data.generation_gt) > 3:
                 st.write(f"  ... and {len(form_data.generation_gt) - 3} more")
         else:
