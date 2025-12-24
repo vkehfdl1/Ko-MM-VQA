@@ -24,7 +24,7 @@ cp postgresql/.env.example postgresql/.env
 
 `postgresql/.env` 파일 수정:
 ```env
-POSTGRES_DB=autorag
+POSTGRES_DB=kommvqa
 POSTGRES_USER=postgres
 POSTGRES_PASSWORD=your_password
 PG_PORT=5432
@@ -44,6 +44,9 @@ make docker-down
 
 # 로그 확인 (postgresql 폴더에서)
 cd postgresql && docker compose logs -f
+
+# 데이터베이스 완전 삭제
+make clean-docker
 ```
 
 ### 4. Streamlit 설정
@@ -53,7 +56,7 @@ cd postgresql && docker compose logs -f
 [database]
 host = "localhost"
 port = 5432
-database = "autorag"
+database = "kommvqa"
 user = "postgres"
 password = "your_password"
 ```
