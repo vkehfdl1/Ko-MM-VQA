@@ -17,6 +17,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+dependencies = [
+    "pdf2image>=1.17.0",
+    "streamlit>=1.50.0",
+]
 
 [project.urls]
 Homepage = "https://vkehfdl1.github.io/KoMM-VQA/"
