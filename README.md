@@ -1,69 +1,116 @@
 # KoMM-VQA
 
-[![Release](https://img.shields.io/github/v/release/vkehfdl1/KoMM-VQA)](https://img.shields.io/github/v/release/vkehfdl1/KoMM-VQA)
-[![Build status](https://img.shields.io/github/actions/workflow/status/vkehfdl1/KoMM-VQA/main.yml?branch=main)](https://github.com/vkehfdl1/KoMM-VQA/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/vkehfdl1/KoMM-VQA/branch/main/graph/badge.svg)](https://codecov.io/gh/vkehfdl1/KoMM-VQA)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/vkehfdl1/KoMM-VQA)](https://img.shields.io/github/commit-activity/m/vkehfdl1/KoMM-VQA)
-[![License](https://img.shields.io/github/license/vkehfdl1/KoMM-VQA)](https://img.shields.io/github/license/vkehfdl1/KoMM-VQA)
+PDF 문서 기반 VQA 데이터셋 생성을 위한 Streamlit 어노테이션 도구.
 
-Korean Document Multi-Page Multi-Hop Visual Question and Answering Dataset
+## 설치
 
-- **Github repository**: <https://github.com/vkehfdl1/KoMM-VQA/>
-- **Documentation** <https://vkehfdl1.github.io/KoMM-VQA/>
-
-## Getting started with your project
-
-### 1. Create a New Repository
-
-First, create a repository on GitHub with the same name as this project, and then run the following commands:
+### 1. uv 설치 및 환경 세팅
 
 ```bash
-git init -b main
-git add .
-git commit -m "init commit"
-git remote add origin git@github.com:vkehfdl1/KoMM-VQA.git
-git push -u origin main
+# uv 설치 (없는 경우)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 프로젝트 디렉토리에서 의존성 설치
+uv sync
 ```
 
-### 2. Set Up Your Development Environment
+### 2. PostgreSQL 환경변수 설정
 
-Then, install the environment and the pre-commit hooks with
+`postgresql/.env` 파일 생성 (`.env.example` 참고):
 
 ```bash
-make install
+cp postgresql/.env.example postgresql/.env
 ```
 
-This will also generate your `uv.lock` file
+`postgresql/.env` 파일 수정:
+```env
+POSTGRES_DB=autorag
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=your_password
+PG_PORT=5432
+```
 
-### 3. Run the pre-commit hooks
-
-Initially, the CI/CD pipeline might be failing due to formatting issues. To resolve those run:
+### 3. Docker로 PostgreSQL 실행
 
 ```bash
-uv run pre-commit run -a
+make docker-up
 ```
 
-### 4. Commit the changes
-
-Lastly, commit the changes made by the two steps above to your repository.
+**주의:** `postgresql/pgdata/` 폴더에 모든 데이터베이스 데이터가 저장됩니다. 이 폴더를 삭제하면 모든 데이터가 손실됩니다.
 
 ```bash
-git add .
-git commit -m 'Fix formatting issues'
-git push origin main
+# 종료
+make docker-down
+
+# 로그 확인 (postgresql 폴더에서)
+cd postgresql && docker compose logs -f
 ```
 
-You are now ready to start development on your project!
-The CI/CD pipeline will be triggered when you open a pull request, merge to main, or when you create a new release.
+### 4. Streamlit 설정
 
-To finalize the set-up for publishing to PyPI, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/publishing/#set-up-for-pypi).
-For activating the automatic documentation with MkDocs, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/mkdocs/#enabling-the-documentation-on-github).
-To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/codecov/).
+`.streamlit/secrets.toml` 파일 생성:
+```toml
+[database]
+host = "localhost"
+port = 5432
+database = "autorag"
+user = "postgres"
+password = "your_password"
+```
 
-## Releasing a new version
+`postgresql/.env`와 동일한 값으로 설정.
 
+### 5. Streamlit 실행
 
+```bash
+uv run streamlit run komm_vqa/app/main.py
+```
+
+브라우저에서 `http://localhost:8501` 접속.
 
 ---
 
-Repository initiated with [fpgmaas/cookiecutter-uv](https://github.com/fpgmaas/cookiecutter-uv).
+## 사용법
+
+### File Management (📁)
+
+**Upload PDF 탭:**
+1. PDF 파일 선택
+2. "Process PDF" 클릭
+3. 각 페이지가 이미지로 변환되어 DB에 저장됨
+
+=> 제작에 사용하시는 PDF를 여기에 올려주시면 됩니다. data/pdfs 폴더에 저장되고, 추후에 해당 폴더를 압축해서 공유해주시면 됩니다.
+
+**Browse Documents 탭:**
+- 문서 선택 후 PDF Viewer 또는 Page by Number로 확인
+- Delete Document로 문서 삭제
+
+### QA Creation (❓)
+
+**1. Select Pages (좌측):**
+1. 문서 선택
+2. 페이지 번호 입력
+3. 미리보기 확인 후 "Add Page" 클릭
+4. 필요한 페이지 모두 추가
+
+=> PDF 문서는 직접 컴퓨터에서 열어서 보며 제작하시는 것이 편할 것이고, 해당하는 페이지 번호만 입력해서 확인하고 추가해주시면 됩니다.
+
+**2. Enter Query (우측):**
+1. Query 입력 (필수) - 질문 형태로 작성합니다.
+2. 객관식 입력 - 질문과 선지를 모두 포함한 형태로 작성합니다. 위에 작성한 Query가 여기에도 포함이 되어있어야 합니다 (LLM에게 들어가는 쿼리+선지 형태라고 생각하시면 됩니다)
+3. Generation GT 입력 (필수) - "Add Answer"로 여러 답안 추가 가능합니다. (서술형 정답, 객관식 정답 하나씩 포함하면 좋겠습니다)
+4. Relation Type 선택:
+   - **AND**: 모든 페이지가 필요 (multi-hop)
+   - **OR**: 페이지 중 하나만 있으면 됨
+   - **Multi-Hop**은 그냥 AND를 선택해주면 됩니다. 저희의 경우에는 OR는 필요하지 않을 것 같습니다.
+5. "Submit Query" → "Confirm and Create" 클릭. **반드시 Confirm and Create를 눌러야 쿼리가 생성됩니다!**
+
+### Data Browser (📊)
+
+**Queries 탭:**
+- 생성된 쿼리 목록 확인
+- 각 쿼리의 Retrieval GT 이미지 확인
+- 쿼리 삭제
+
+**Statistics 탭:**
+- 전체 데이터셋 통계 확인
