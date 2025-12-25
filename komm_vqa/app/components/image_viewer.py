@@ -10,24 +10,25 @@ from komm_vqa.app.db import get_service
 
 @st.cache_data(ttl=3600, max_entries=500)
 def load_thumbnail(page_id: str, size: tuple[int, int] = (200, 200)) -> bytes | None:
-    """Load and cache page thumbnail.
+    """Load and cache page thumbnail from ImageChunk.
 
     Args:
         page_id: Page ID (used as cache key)
         size: Maximum thumbnail size (width, height)
 
     Returns:
-        PNG image bytes or None if not found
+        JPEG image bytes or None if not found
     """
     service = get_service()
     with service._create_uow() as uow:
-        page = uow.pages.get_by_id(page_id)
-        if page and page.image_contents:
+        # Load image from ImageChunk (not Page.image_contents)
+        image_chunks = uow.image_chunks.get_by_page_id(page_id)
+        if image_chunks and image_chunks[0].contents:
             try:
-                img = Image.open(BytesIO(page.image_contents))
+                img = Image.open(BytesIO(image_chunks[0].contents))
                 img.thumbnail(size, Image.Resampling.LANCZOS)
                 buffer = BytesIO()
-                img.save(buffer, format="PNG")
+                img.save(buffer, format="JPEG", quality=85)
                 return buffer.getvalue()
             except Exception:
                 return None
@@ -36,7 +37,7 @@ def load_thumbnail(page_id: str, size: tuple[int, int] = (200, 200)) -> bytes | 
 
 @st.cache_data(ttl=300, max_entries=50)
 def load_full_image(page_id: str) -> bytes | None:
-    """Load and cache full page image.
+    """Load and cache full page image from ImageChunk.
 
     Args:
         page_id: Page ID (used as cache key)
@@ -46,9 +47,10 @@ def load_full_image(page_id: str) -> bytes | None:
     """
     service = get_service()
     with service._create_uow() as uow:
-        page = uow.pages.get_by_id(page_id)
-        if page and page.image_contents:
-            return page.image_contents
+        # Load image from ImageChunk (not Page.image_contents)
+        image_chunks = uow.image_chunks.get_by_page_id(page_id)
+        if image_chunks and image_chunks[0].contents:
+            return image_chunks[0].contents
     return None
 
 

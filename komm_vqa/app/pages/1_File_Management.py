@@ -7,7 +7,6 @@ from pathlib import Path
 
 import streamlit as st
 from pdf2image import convert_from_bytes
-from pdf2image.pdf2image import pdfinfo_from_bytes
 from PIL import Image
 
 from komm_vqa.app.components.image_viewer import load_full_image
@@ -117,32 +116,13 @@ def convert_pdf_with_progress(pdf_bytes: bytes) -> list:
     Returns:
         List of PIL Image objects
     """
-    # Get page count
-    try:
-        info = pdfinfo_from_bytes(pdf_bytes)
-        total_pages = info["Pages"]
-    except Exception:
-        # Fallback: convert all at once
-        return convert_from_bytes(pdf_bytes, dpi=150, fmt="PNG")
-
-    progress_bar = st.progress(0)
     status_text = st.empty()
+    status_text.text("Converting PDF pages...")
 
-    images = []
-    for i in range(1, total_pages + 1):
-        status_text.text(f"Converting page {i}/{total_pages}...")
-        page_images = convert_from_bytes(
-            pdf_bytes,
-            dpi=150,
-            first_page=i,
-            last_page=i,
-            fmt="PNG",
-        )
-        images.extend(page_images)
-        progress_bar.progress(i / total_pages)
+    # Convert all pages at once (much faster than page-by-page)
+    images = convert_from_bytes(pdf_bytes, dpi=150, fmt="JPEG")
 
-    status_text.text("Conversion complete!")
-    progress_bar.empty()
+    status_text.text(f"Converted {len(images)} pages!")
     return images
 
 
@@ -189,27 +169,26 @@ def upload_pdf(uploaded_file) -> tuple[str, int]:
 
     # Add Pages and ImageChunks
     for page_num, img in enumerate(images, start=1):
-        # Convert PIL image to bytes
+        # Convert PIL image to JPEG bytes (much smaller than PNG)
         buffer = BytesIO()
-        img.save(buffer, format="PNG")
+        img.save(buffer, format="JPEG", quality=85)
         img_bytes = buffer.getvalue()
 
-        # Add Page
+        # Add Page (without image_contents - stored only in ImageChunk)
         page_ids = service.add_pages([
             {
                 "document_id": doc_id,
                 "page_num": page_num,
-                "image_contents": img_bytes,
-                "mimetype": "image/png",
+                "mimetype": "image/jpeg",
             }
         ])
         page_id = page_ids[0]
 
-        # Add ImageChunk (1:1 with Page)
+        # Add ImageChunk (1:1 with Page) - this stores the actual image
         service.add_image_chunks([
             {
                 "contents": img_bytes,
-                "mimetype": "image/png",
+                "mimetype": "image/jpeg",
                 "parent_page": page_id,
             }
         ])
@@ -263,27 +242,26 @@ def upload_images_as_pdf(uploaded_images: list, doc_title: str | None = None) ->
 
     # Add Pages and ImageChunks
     for page_num, img in enumerate(images, start=1):
-        # Convert PIL image to bytes
+        # Convert PIL image to JPEG bytes (much smaller than PNG)
         buffer = BytesIO()
-        img.save(buffer, format="PNG")
+        img.save(buffer, format="JPEG", quality=85)
         img_bytes = buffer.getvalue()
 
-        # Add Page
+        # Add Page (without image_contents - stored only in ImageChunk)
         page_ids = service.add_pages([
             {
                 "document_id": doc_id,
                 "page_num": page_num,
-                "image_contents": img_bytes,
-                "mimetype": "image/png",
+                "mimetype": "image/jpeg",
             }
         ])
         page_id = page_ids[0]
 
-        # Add ImageChunk (1:1 with Page)
+        # Add ImageChunk (1:1 with Page) - this stores the actual image
         service.add_image_chunks([
             {
                 "contents": img_bytes,
-                "mimetype": "image/png",
+                "mimetype": "image/jpeg",
                 "parent_page": page_id,
             }
         ])
